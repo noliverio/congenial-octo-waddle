@@ -42,18 +42,19 @@ func LoadPage(title string) (*Page, error) {
 
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
+// ViewHandler takes a url, finds the part after "/view/" and uses that as a
+// title for a page to load. It creates a Page object with that name, the tries to
+// load the page. It returns html with the title and body of the page.
+func ViewHandler(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Path[len("/view/"):]
+	p, err := LoadPage(title)
+	check(err)
+
+	fmt.Fprintf(w, "<h1>%s</h1><div>%s</div>", p.Title, p.Body)
 }
 
 func main() {
-	//	p1 := &Page{Title: "TestPage", Body: []byte("This is a sample Page.")}
-	//	p1.Save()
-	//
-	//	p2, err := LoadPage("TestPage")
-	//	check(err)
-	//	fmt.Println(string(p2.Body))
-
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/view/", ViewHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
+
 }
