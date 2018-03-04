@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 
 func check(err error) {
 	if err != nil {
+		fmt.Println("Encountered an error:")
 		fmt.Println(err)
 	}
 }
@@ -35,11 +37,18 @@ func (p *Page) Save() error {
 func LoadPage(title string) (*Page, error) {
 	filename := title + ".txt"
 	body, err := ioutil.ReadFile(filename)
+	check(err)
 	if err != nil {
 		return nil, err
 	}
 	return &Page{Title: title, Body: body}, nil
 
+}
+
+func RenderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
+	t, err := template.ParseFiles(tmpl + ".html")
+	check(err)
+	t.Execute(w, p)
 }
 
 // ViewHandler takes a url, finds the part after "/view/" and uses that as a
@@ -50,11 +59,28 @@ func ViewHandler(w http.ResponseWriter, r *http.Request) {
 	p, err := LoadPage(title)
 	check(err)
 
-	fmt.Fprintf(w, "<h1>%s</h1><div>%s</div>", p.Title, p.Body)
+	RenderTemplate(w, "view", p)
+}
+
+func EditHandler(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Path[len("/edit/"):]
+	p, err := LoadPage(title)
+	check(err)
+	if err != nil {
+		p = &Page{Title: title}
+	}
+
+	RenderTemplate(w, "edit", p)
+}
+
+func SaveHandler(w http.ResponseWriter, r *http.Request) {
+
 }
 
 func main() {
 	http.HandleFunc("/view/", ViewHandler)
+	http.HandleFunc("/edit/", EditHandler)
+	//http.HandleFunc("/save/", SaveHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
 }
