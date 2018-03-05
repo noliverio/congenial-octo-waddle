@@ -3,12 +3,13 @@ package main
 //package wiki
 
 import (
-	"fmt"
+	//	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +43,29 @@ func TestLoadPage(t *testing.T) {
 }
 
 func TestViewHandler(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://localhost:8080/view/geraffes", nil)
+	w := httptest.NewRecorder()
+	ViewHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("View test page did not return %v", http.StatusOK)
+	}
+
+	testString := "<div>dumb long horses"
+	if !strings.Contains(w.Body.String(), testString) {
+		t.Errorf("View test page did not contain %v", testString)
+	}
+
+}
+
+func TestSaveHandler(t *testing.T) {
+
+}
+
+func TestEditHandler(t *testing.T) {
+
+}
+
+func TestRenderTemplate(t *testing.T) {
 
 }
