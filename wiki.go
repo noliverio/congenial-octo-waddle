@@ -7,11 +7,13 @@ package main
 //package wiki
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 )
 
 // Check prints out an error passed to it, if the error is non-nil
@@ -46,17 +48,42 @@ func LoadPage(title string) (*Page, error) {
 
 }
 
-// RenderTemplate executes a template passed to it.
+// do not want user to write to any arbitrary file on server
+var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+
+func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
+	m := validPath.FindStringSubmatch(r.URL.Path)
+	if m == nil {
+		http.NotFound(w, r)
+		return "", errors.New("Invalid Page Title")
+	}
+	return m[2], nil // return the title
+}
+
+// note: these templates are not compiled into the binary.
+//	must run gowiki from a directory containing these files...
+var templates = template.Must(template.ParseFiles("edit.html", "view.html"))
+
+// RenderTemplate executes a parsed template passed to it.
 func RenderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
-	t, err := template.ParseFiles(tmpl + ".html")
+	err := templates.ExecuteTemplate(w, tmpl+".html", p)
 	check(err)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	err = t.Execute(w, p)
-	check(err)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+// MakeHandler is a wrapper around handlers to avoid writing the title extraction code
+// again and again.
+func MakeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// extract page title from request, then call the handler
+		m := validPath.FindStringSubmatch(r.URL.Path)
+		if m == nil {
+			http.NotFound(w, r)
+			return
+		}
+		fn(w, r, m[2])
 	}
 }
 
@@ -65,8 +92,7 @@ func RenderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 // load the page. It returns html with the title and body of the page.
 //
 // If there is no page with the given title it redirects to the edit handler.
-func ViewHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/view/"):]
+func ViewHandler(w http.ResponseWriter, r *http.Request, title string) {
 	p, err := LoadPage(title)
 	check(err)
 	if err != nil {
@@ -80,8 +106,7 @@ func ViewHandler(w http.ResponseWriter, r *http.Request) {
 // EditHandler allows the user to edit the page contents.
 // If there is not yet a page with the given title it gives
 // the user an empty page to work from.
-func EditHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/edit/"):]
+func EditHandler(w http.ResponseWriter, r *http.Request, title string) {
 	p, err := LoadPage(title)
 	check(err)
 	if err != nil {
@@ -92,18 +117,21 @@ func EditHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // SaveHandler writes the change made to a page to the pages file.
-func SaveHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/save/"):]
+func SaveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
-	p.Save()
+	err := p.Save()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
 func main() {
-	http.HandleFunc("/view/", ViewHandler)
-	http.HandleFunc("/edit/", EditHandler)
-	http.HandleFunc("/save/", SaveHandler)
+	http.HandleFunc("/view/", MakeHandler(ViewHandler))
+	http.HandleFunc("/edit/", MakeHandler(EditHandler))
+	http.HandleFunc("/save/", MakeHandler(SaveHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
 }
